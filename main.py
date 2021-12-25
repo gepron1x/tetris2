@@ -66,7 +66,6 @@ class ButtonSprite(Sprite):
 
 
 class MainPage(Page):
-    # BACKGROUND = load_image("background.png")
     LEVELS, STATISTICS = 0, 1
 
     def __init__(self):
@@ -142,7 +141,7 @@ class MovementController:
         self.player.move(move_x, 0)
 
 
-class TetrisGame:
+class TetrisGame(Page):
 
     def __init__(self, player):
         self.all_sprites = pygame.sprite.Group()
@@ -176,6 +175,9 @@ def main():
     clock = pygame.time.Clock()
     player = PlayerSprite("player")
     page = MainPage()
+    page.levels.connect(lambda: print("levels!"))
+    page.statistics.connect(lambda: print("statistics!"))
+
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
