@@ -6,11 +6,17 @@ import os
 import sys
 
 import pygame
-from pygame.sprite import Sprite
+from pygame.sprite import Sprite, AbstractGroup
+
+from event import Signal
 
 WIDTH, HEIGHT = 600, 600
 
 BLUE_SKY = (51, 204, 255)
+
+
+def as_rgb(color):
+    return color.r, color.g, color.b
 
 
 def load_image(name, color_key=None):
@@ -27,6 +33,67 @@ def load_image(name, color_key=None):
         image.set_colorkey(color_key)
 
     return image
+
+
+class Page:
+
+    def update(self):
+        pass
+
+    def handle_event(self, event):
+        pass
+
+    def draw(self, screen):
+        pass
+
+
+class ButtonSprite(Sprite):
+
+    def __init__(self, pos, text, font, color, *groups: AbstractGroup):
+        super().__init__(*groups)
+        self.text = text
+        self.font = font
+        rendered_text = font.render(self.text, True, (0, 0, 0))
+        self.image = pygame.Surface((rendered_text.get_rect().width + 6, rendered_text.get_rect().height + 6))
+        self.image.fill(as_rgb(color))
+        self.image.blit(rendered_text, (3, 3))
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = pos
+        self.pressed = Signal()
+
+    def press(self):
+        self.pressed.emit()
+
+
+class MainPage(Page):
+    # BACKGROUND = load_image("background.png")
+    LEVELS, STATISTICS = 0, 1
+
+    def __init__(self):
+        self.levels = Signal()
+        self.buttons = pygame.sprite.Group()
+        levels = ButtonSprite((WIDTH // 2 - 100, 400), "Уровни", pygame.font.Font(None, 50),
+                              pygame.color.Color('white'), self.buttons)
+        levels.pressed.connect(lambda: self.levels.emit())
+
+        statistics = ButtonSprite((WIDTH // 2 - 100, 450), "Статистика", pygame.font.Font(None, 50),
+                                  pygame.color.Color('white'), self.buttons)
+        statistics.pressed.connect(lambda: self.statistics.emit())
+        self.statistics = Signal()
+        self.chosen = MainPage.LEVELS
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.click(event.pos)
+
+    def draw(self, screen):
+        screen.fill(BLUE_SKY)
+        self.buttons.draw(screen)
+
+    def click(self, pos):
+        for button in self.buttons.sprites():
+            if button.rect.collidepoint(*pos):
+                button.press()
 
 
 class Border(pygame.sprite.Sprite):
@@ -108,14 +175,14 @@ def main():
 
     clock = pygame.time.Clock()
     player = PlayerSprite("player")
-    game = TetrisGame(player)
+    page = MainPage()
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            game.handle_event(event)
-        game.update()
-        game.draw(screen)
+            page.handle_event(event)
+        page.update()
+        page.draw(screen)
         pygame.display.flip()
         clock.tick(30)
 
