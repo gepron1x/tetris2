@@ -12,6 +12,10 @@ from event import Signal
 
 WIDTH, HEIGHT = 600, 600
 
+BOX_SIZE = 50
+
+GT = 9.8
+
 BLUE_SKY = (51, 204, 255)
 
 
@@ -65,6 +69,16 @@ class ButtonSprite(Sprite):
         self.pressed.emit()
 
 
+class BoxSprite(pygame.sprite.Sprite):
+    IMAGE = load_image("box.png")
+
+    def __init__(self, pos, *groups):
+        super().__init__(*groups)
+        self.image = BoxSprite.IMAGE
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = pos
+
+
 class MainPage(Page):
     # BACKGROUND = load_image("background.png")
     LEVELS, STATISTICS = 0, 1
@@ -113,6 +127,7 @@ class PlayerSprite(Sprite):
 
     def __init__(self, name, *groups):
         super().__init__(*groups)
+
         self.image = PlayerSprite.IMAGE
         self.rect = self.image.get_rect()
         self.rect.x = WIDTH - self.image.get_width() - 5
@@ -122,30 +137,77 @@ class PlayerSprite(Sprite):
     def move(self, x, y):
         self.rect = self.rect.move(x, y)
 
+    def get_rect(self):
+        return self.rect
+
+    def set_rect(self, rect):
+        self.rect = rect
+
 
 class MovementController:
-    def __init__(self, player, horizontal_borders, vertical_borders, step=10):
+    def __init__(self, player: PlayerSprite, all_sprites, horizontal_borders, vertical_borders,
+                 boxes: pygame.sprite.Group, step=10):
         self.vertical_borders = vertical_borders
         self.horizontal_borders = horizontal_borders
+        self.all_sprites = all_sprites
+        self.boxes = boxes
+        self.jumpCount = 0
+        self.isJump = False
 
         self.player = player
         self.step = step
+        self.jump = 0
 
     def handle(self):
         pressed = pygame.key.get_pressed()
         move_x = 0
+        move_y = 0
+        rect = self.player.get_rect()
 
         if pressed[pygame.K_a]:
             move_x -= self.step
         if pressed[pygame.K_d]:
             move_x += self.step
-        self.player.move(move_x, 0)
+        if pressed[pygame.K_s]:
+            move_y += self.step
+        if pressed[pygame.K_w]:
+            move_y -= self.step
+
+        ''' if pressed[pygame.K_SPACE]:
+            if self.jumpCount >= -10:
+                neg = 1
+                if self.jumpCount < 0:
+                    neg = -1
+                self.jump -= self.jumpCount ** 2 * 0.1 * neg
+                move_y -= self.jump
+                self.player.move(0, -self.jump)
+                self.jumpCount -= 1
+            else:
+                self.isJump = False
+                self.jumpCount = 10
+        '''
+        new_rect = rect.move(move_x, move_y)
+        self.player.set_rect(new_rect)
+        if pygame.sprite.spritecollideany(self.player, self.boxes) or \
+                pygame.sprite.spritecollideany(self.player, self.horizontal_borders):
+            self.player.set_rect(rect)
+        modifier = 1
+        if move_x < 0:
+            modifier = -1
+
+        if pressed[pygame.K_END]:
+            box = BoxSprite((self.player.rect.x + (BOX_SIZE * modifier),
+                             self.player.rect.y - PlayerSprite.IMAGE.get_rect().height // 2))
+            if not pygame.sprite.spritecollideany(box, self.boxes):
+                self.boxes.add(box)
+                self.all_sprites.add(box)
 
 
 class TetrisGame:
 
-    def __init__(self, player):
+    def __init__(self, player, level):
         self.all_sprites = pygame.sprite.Group()
+        self.boxes = pygame.sprite.Group()
         self.player = player
         vertical_borders = pygame.sprite.Group()
         vertical_borders.add(Border(5, 5, WIDTH - 5, 5, self.all_sprites),
@@ -153,7 +215,25 @@ class TetrisGame:
         horizontal_borders = pygame.sprite.Group()
         horizontal_borders.add(Border(5, 5, 5, HEIGHT - 5, self.all_sprites),
                                Border(WIDTH - 5, 5, WIDTH - 5, HEIGHT - 5, self.all_sprites))
-        self.movement_control = MovementController(player, vertical_borders, horizontal_borders)
+        for i in range(len(level)):
+            s = level[i]
+            y = i * BOX_SIZE
+            for j in range(len(s)):
+                c = s[j]
+                x = j * BOX_SIZE
+                pos = (x, y)
+                if c == 'B':
+                    sprite = BoxSprite(pos)
+                    self.boxes.add(sprite)
+                    self.all_sprites.add(sprite)
+        self.movement_control = MovementController(
+            player, self.all_sprites,
+            vertical_borders,
+            horizontal_borders,
+            self.boxes)
+
+        if self.player is None:
+            raise ValueError("No player on level")
         self.all_sprites.add(player)
 
     def update(self):
@@ -175,7 +255,13 @@ def main():
 
     clock = pygame.time.Clock()
     player = PlayerSprite("player")
-    page = MainPage()
+    page = TetrisGame(player, ["BBB      BBB",
+                               "BB        BB",
+                               "B        BBB",
+                               "BB  B      B",
+                               "BB        BB",
+                               "B  B      BB",
+                               "B  B  B BB  "])
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
