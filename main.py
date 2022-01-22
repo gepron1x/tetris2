@@ -21,6 +21,15 @@ GT = 9.8
 
 BLUE_SKY = (51, 204, 255)
 
+FIRST_FIGURE = ["BBB", "B  "]
+SECOND_FIGURE = ["BBB", "  B"]
+THIRD_FIGURE = ["BB",
+                "B ",
+                "B "]
+FOURTH_FIGURE = ["BB",
+                 "B ",
+                 "B "]
+
 
 def as_rgb(color):
     return color.r, color.g, color.b
@@ -246,14 +255,18 @@ class GameBoard:
 
 
 class MovementController:
-    def __init__(self, player: PlayerSprite, sprite_manager: GameBoard, step=BOX_SIZE):
+    def __init__(self, player: PlayerSprite, figure, sprite_manager: GameBoard, step=BOX_SIZE):
         self.sprite_manager = sprite_manager
+        self.figure = figure
         self.is_move = True
         self.prew_ticks = 0
         self.timer = 0
 
         self.player = player
         self.step = step
+
+    def update_figure(self, figure):
+        self.figure = figure
 
     def handle(self):
         pressed = pygame.key.get_pressed()
@@ -322,8 +335,7 @@ class MovementController:
 
         if pressed[pygame.K_f]:
             x, y = pygame.mouse.get_pos()
-            box = Figure(["BBB", "  B"], self.getboxpos(x, y))
-            box.rotate(90)
+            box = Figure(self.figure, self.getboxpos(x, y))
             if not self.sprite_manager.collides_solid(box):
                 self.sprite_manager.add_solid(box)
 
@@ -386,7 +398,6 @@ class TetrisGame(Page):
 
         self.player = player
         self.ui_manager = ui_manager
-
         self.start = datetime.datetime.now()
 
         self.sprite_manager = GameBoard()
@@ -426,6 +437,13 @@ class TetrisGame(Page):
             parent_element=self.panel
         )
 
+        self.figures = pygame_gui.elements.UISelectionList(
+            relative_rect=pygame.Rect((WIDTH - 200, HEIGHT - 50), (60, 50)),
+            item_list=["Г", "|__", "L", "__|"],
+            starting_height=1,
+            manager=self.ui_manager
+        )
+
     def update(self):
         self.movement_control.handle()
         self.sprite_manager.update()
@@ -441,7 +459,9 @@ class TetrisGame(Page):
         self.sprite_manager.draw(screen)
 
     def handle_event(self, event):
-        pass
+        if event.type == pygame_gui.UI_SELECTION_LIST_NEW_SELECTION:
+            pass
+
 
 
 def main():
@@ -461,8 +481,8 @@ def main():
                                "BB        BB",
                                "B  B      BB",
                                "B  B  B BB  "], manager)
-    # page = Levels(manager, [Level("Уровень 1", "Осознание происходящего", []), Level("Уровень 2", "", []), Level("Уровень 3", "fff", [])])
-    #page = MainPage(manager)
+    # page = Levels(manager, [Level("Уровень 1", "", []), Level("Уровень 2", "", []), Level("Уровень 3", "", [])])
+    # page = MainPage(manager)
     while running:
         time_delta = clock.tick(60) / 1000.0
         for event in pygame.event.get():
