@@ -21,11 +21,13 @@ GT = 9.8
 
 BLUE_SKY = (51, 204, 255)
 
-FIRST_FIGURE = ["BBB", "B  "]
-SECOND_FIGURE = ["BBB", "  B"]
-THIRD_FIGURE = ["BB",
+FIRST_FIGURE = ["B  ",
+                "BBB"]
+SECOND_FIGURE = ["  B",
+                 "BBB"]
+THIRD_FIGURE = ["B",
                 "B ",
-                "B "]
+                "BB"]
 FOURTH_FIGURE = ["BB",
                  "B ",
                  "B "]
@@ -118,7 +120,7 @@ class Figure(pygame.sprite.Sprite):
 
 
 class MainPage(Page):
-    BACKGROUND = load_image("artwork.png")
+    BACKGROUND = pygame.Surface((WIDTH, HEIGHT))
     LEVELS, STATISTICS = 0, 1
 
     def __init__(self, ui_manager):
@@ -142,9 +144,11 @@ class MainPage(Page):
         screen.blit(MainPage.BACKGROUND, (0, 0))
 
     def click(self, element):
+        print("yes")
         if element == self.statistics_button:
             self.statistics.emit()
         elif element == self.levels_button:
+            print("yes")
             self.levels.emit()
 
 
@@ -255,9 +259,9 @@ class GameBoard:
 
 
 class MovementController:
-    def __init__(self, player: PlayerSprite, figure, sprite_manager: GameBoard, step=BOX_SIZE):
+    def __init__(self, player: PlayerSprite, sprite_manager: GameBoard, step=BOX_SIZE):
         self.sprite_manager = sprite_manager
-        self.figure = figure
+        self.figure = FIRST_FIGURE
         self.is_move = True
         self.prew_ticks = 0
         self.timer = 0
@@ -393,6 +397,7 @@ def format_timedelta(delta):
 
 class TetrisGame(Page):
     GRASS = pygame.transform.scale(load_image("grass.png"), (WIDTH, HEIGHT))
+    FIGURES = {"Г": FOURTH_FIGURE, "|__": FIRST_FIGURE, "L": THIRD_FIGURE, "__|": SECOND_FIGURE}
 
     def __init__(self, player: PlayerSprite, level, ui_manager: pygame_gui.UIManager):
 
@@ -439,7 +444,7 @@ class TetrisGame(Page):
 
         self.figures = pygame_gui.elements.UISelectionList(
             relative_rect=pygame.Rect((WIDTH - 200, HEIGHT - 50), (60, 50)),
-            item_list=["Г", "|__", "L", "__|"],
+            item_list=list(TetrisGame.FIGURES.keys()),
             starting_height=1,
             manager=self.ui_manager
         )
@@ -460,8 +465,27 @@ class TetrisGame(Page):
 
     def handle_event(self, event):
         if event.type == pygame_gui.UI_SELECTION_LIST_NEW_SELECTION:
-            pass
+            text = event.text
+            self.movement_control.update_figure(TetrisGame.FIGURES[text])
 
+
+class TetrisGameMain:
+
+    def __init__(self, player: PlayerSprite, ui_manager: pygame_gui.UIManager, levels):
+        self.player = player
+        self.ui_manager = ui_manager
+        self.page = MainPage(ui_manager)
+        self.page.levels.connect(self.set_levels_page)
+        self.levels = levels
+
+    def set_levels_page(self):
+        self.ui_manager.clear_and_reset()
+        self.page = Levels(self.ui_manager, self.levels)
+        self.page.level_chosen.connect(self.set_game_page)
+
+    def set_game_page(self, level):
+        self.ui_manager.clear_and_reset()
+        self.page = TetrisGame(self.player, level.get_content(), self.ui_manager)
 
 
 def main():
@@ -474,13 +498,13 @@ def main():
 
     clock = pygame.time.Clock()
     player = PlayerSprite("player")
-    page = TetrisGame(player, ["            ",
-                               "            ",
-                               "B        BBB",
-                               "BB  B      B",
-                               "BB        BB",
-                               "B  B      BB",
-                               "B  B  B BB  "], manager)
+    game = TetrisGameMain(player, manager, [Level("Уровень 1", "", ["            ",
+                                                                    "            ",
+                                                                    "B        BBB",
+                                                                    "BB  B      B",
+                                                                    "BB        BB",
+                                                                    "B  B      BB",
+                                                                    "B  B  B BB  "])])
     # page = Levels(manager, [Level("Уровень 1", "", []), Level("Уровень 2", "", []), Level("Уровень 3", "", [])])
     # page = MainPage(manager)
     while running:
@@ -488,11 +512,12 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            page.handle_event(event)
-        manager.update(time_delta)
-        page.update()
-        page.draw(screen)
-        manager.draw_ui(screen)
+            game.page.handle_event(event)
+            game.ui_manager.process_events(event)
+        game.ui_manager.update(time_delta)
+        game.page.update()
+        game.page.draw(screen)
+        game.ui_manager.draw_ui(screen)
         pygame.display.flip()
         clock.tick(30)
 
