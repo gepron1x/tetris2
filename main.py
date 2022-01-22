@@ -2,12 +2,14 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import datetime
 import os
 import sys
 
 import pygame
 import pygame_gui
 from pygame.sprite import Sprite, AbstractGroup
+from datetime import timedelta
 
 from event import Signal
 
@@ -52,28 +54,20 @@ class Page:
         pass
 
 
-class ButtonSprite(Sprite):
+class Level:
+    def __init__(self, name, description, content):
+        self.name = name
+        self.description = description
+        self.content = content
 
-    def __init__(self, pos, text, font, color, *groups: AbstractGroup):
-        super().__init__(*groups)
-        self.text = text
-        self.font = font
-        rendered_text = font.render(self.text, True, (0, 0, 0))
-        self.image = pygame.Surface((rendered_text.get_rect().width + 6, rendered_text.get_rect().height + 6))
-        self.image.fill(as_rgb(color))
-        self.image.blit(rendered_text, (3, 3))
-        self.rect = self.image.get_rect()
-        self.rect.x, self.rect.y = pos
-        self.pressed = Signal()
+    def get_name(self):
+        return self.name
 
-    def press(self):
-        self.pressed.emit()
+    def get_description(self):
+        return self.description
 
-
-class CellSprite(pygame.sprite.Sprite):
-
-    def __init__(self, *groups: AbstractGroup):
-        super().__init__(*groups)
+    def get_content(self):
+        return self.content
 
 
 class BrickSprite(pygame.sprite.Sprite):
@@ -115,34 +109,75 @@ class Figure(pygame.sprite.Sprite):
 
 
 class MainPage(Page):
-    # BACKGROUND = load_image("background.png")
+    BACKGROUND = load_image("artwork.png")
     LEVELS, STATISTICS = 0, 1
 
-    def __init__(self):
+    def __init__(self, ui_manager):
         self.levels = Signal()
-        self.buttons = pygame.sprite.Group()
-        levels = ButtonSprite((WIDTH // 2 - 100, 400), "Уровни", pygame.font.Font(None, 50),
-                              pygame.color.Color('white'), self.buttons)
-        levels.pressed.connect(lambda: self.levels.emit())
-
-        statistics = ButtonSprite((WIDTH // 2 - 100, 450), "Статистика", pygame.font.Font(None, 50),
-                                  pygame.color.Color('white'), self.buttons)
-        statistics.pressed.connect(lambda: self.statistics.emit())
         self.statistics = Signal()
-        self.chosen = MainPage.LEVELS
+
+        self.levels_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect((WIDTH // 2 - 100, 250), (200, 50)),
+                                                          text='Выбор уровня',
+                                                          manager=ui_manager)
+
+        self.statistics_button = pygame_gui.elements.UIButton(
+            relative_rect=pygame.Rect((WIDTH // 2 - 100, 310), (200, 50)),
+            text='Статистика',
+            manager=ui_manager)
 
     def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            self.click(event.pos)
+        if event.type == pygame_gui.UI_BUTTON_PRESSED:
+            self.click(event.ui_element)
 
     def draw(self, screen):
-        screen.fill(BLUE_SKY)
-        self.buttons.draw(screen)
+        screen.blit(MainPage.BACKGROUND, (0, 0))
 
-    def click(self, pos):
-        for button in self.buttons.sprites():
-            if button.rect.collidepoint(*pos):
-                button.press()
+    def click(self, element):
+        if element == self.statistics_button:
+            self.statistics.emit()
+        elif element == self.levels_button:
+            self.levels.emit()
+
+
+class Levels(Page):
+
+    def __init__(self, ui_manager: pygame_gui.UIManager, levels):
+        self.level_chosen = Signal()
+        self.button_to_level = dict()
+        panel_width = 300
+        panel_height = 50
+
+        x = panel_width // 2
+
+        for index, level in enumerate(levels):
+            y = 200 + (panel_height + 20) * index
+            panel = pygame_gui.elements.UIPanel(
+                relative_rect=pygame.Rect(
+                    (x, y), (panel_width, panel_height)
+                ),
+                starting_layer_height=0,
+                manager=ui_manager
+            )
+            text = pygame_gui.elements.UITextBox(
+                relative_rect=pygame.Rect((x + 5, y + 1), (200, 49)),
+                html_text=f"{level.get_name()}: {level.get_description()}",
+                manager=ui_manager
+            )
+            button = pygame_gui.elements.UIButton(
+                relative_rect=pygame.Rect((x + 210, y), (80, 49)),
+                text="Играть",
+                manager=ui_manager
+            )
+            self.button_to_level[button] = level
+
+    def handle_event(self, event):
+        if event.type == pygame_gui.UI_BUTTON_PRESSED:
+            element = event.ui_element
+            level = self.button_to_level[element]
+            self.level_chosen.emit(level)
+
+    def draw(self, screen):
+        screen.blit(MainPage.BACKGROUND, (0, 0))
 
 
 class Border(pygame.sprite.Sprite):
@@ -211,14 +246,14 @@ class GameBoard:
 
 
 class MovementController:
-    def __init__(self, player: PlayerSprite, sprite_manager: GameBoard, step=10):
+    def __init__(self, player: PlayerSprite, sprite_manager: GameBoard, step=BOX_SIZE):
         self.sprite_manager = sprite_manager
-        self.jumpCount = 0
-        self.isJump = False
+        self.is_move = True
+        self.prew_ticks = 0
+        self.timer = 0
 
         self.player = player
         self.step = step
-        self.jump = 0
 
     def handle(self):
         pressed = pygame.key.get_pressed()
@@ -226,14 +261,33 @@ class MovementController:
         move_y = 0
         rect = self.player.get_rect()
 
+        if not self.is_move:
+            self.timer += pygame.time.get_ticks() - self.prew_ticks
+            self.prew_ticks = pygame.time.get_ticks()
+            if self.timer > 100:
+                self.timer = 0
+                self.is_move = True
+
         if pressed[pygame.K_a]:
-            move_x -= self.step
+            if self.is_move:
+                move_x -= self.step
+                self.is_move = False
+                self.prew_ticks = pygame.time.get_ticks()
         if pressed[pygame.K_d]:
-            move_x += self.step
+            if self.is_move:
+                move_x += self.step
+                self.is_move = False
+                self.prew_ticks = pygame.time.get_ticks()
         if pressed[pygame.K_s]:
-            move_y += self.step
+            if self.is_move:
+                move_y += self.step
+                self.is_move = False
+                self.prew_ticks = pygame.time.get_ticks()
         if pressed[pygame.K_w]:
-            move_y -= self.step
+            if self.is_move:
+                move_y -= self.step
+                self.is_move = False
+                self.prew_ticks = pygame.time.get_ticks()
 
         ''' if pressed[pygame.K_SPACE]:
             if self.jumpCount >= -10:
@@ -266,57 +320,74 @@ class MovementController:
         elif mouse_y < rect.y:
             offset_y -= BOX_SIZE
 
-        if pressed[pygame.K_END]:
+        if pressed[pygame.K_f]:
             x, y = pygame.mouse.get_pos()
-            box = Figure(["B"], self.getboxpos(x, y))
+            box = Figure(["BBB", "  B"], self.getboxpos(x, y))
             box.rotate(90)
             if not self.sprite_manager.collides_solid(box):
                 self.sprite_manager.add_solid(box)
 
     def getboxpos(self, x, y):
+        print(self.player.rect.x, self.player.rect.y, x, y)
         x_center = self.player.rect.x + self.player.image.get_width() // 2
         y_center = self.player.rect.y + self.player.image.get_height() // 2
+        x, y = x - x_center, -1 * y + y_center
+        print(x, y)
         number_col = x_center // BOX_SIZE
         number_row = y_center // BOX_SIZE
-        if x > self.player.rect.x and y > self.player.rect.y:
+        if x > 0 and y > 0:
             if x > y:
+                print('right')
                 x_box, y_box = number_col * 50 + 50, number_row * 50
                 return x_box, y_box
             else:
-                x_box, y_box = number_col * 50, number_row * 50 + 50
+                print('up')
+                x_box, y_box = number_col * 50, number_row * 50 - 50
                 return x_box, y_box
-        elif x > self.player.rect.x and y < self.player.rect.y:
-            if x > y:
+        elif x > 0 > y:
+            if x > abs(y):
+                print('right')
                 x_box, y_box = number_col * 50 + 50, number_row * 50
                 return x_box, y_box
             else:
-                x_box, y_box = number_col * 50, number_row * 50 - 50
-                return x_box, y_box
-        elif x < self.player.rect.x and y > self.player.rect.y:
-            if x > y:
-                x_box, y_box = number_col * 50 - 50, number_row * 50
-                return x_box, y_box
-            else:
+                print('down')
                 x_box, y_box = number_col * 50, number_row * 50 + 50
                 return x_box, y_box
-        elif x < self.player.rect.x and y < self.player.rect.y:
-            if x > y:
+        elif x < 0 < y:
+            if abs(x) > y:
+                print(5)
                 x_box, y_box = number_col * 50 - 50, number_row * 50
                 return x_box, y_box
             else:
+                print(6, 'up')
                 x_box, y_box = number_col * 50, number_row * 50 - 50
+                return x_box, y_box
+        elif x < 0 and y < 0:
+            if x > y:
+                print('down')
+                x_box, y_box = number_col * 50, number_row * 50 + 50
+                return x_box, y_box
+            else:
+                print(8, 'left')
+                x_box, y_box = number_col * 50 - 50, number_row * 50
                 return x_box, y_box
 
 
-class TetrisGame:
+def format_timedelta(delta):
+    minutes = delta.seconds // 60
+    seconds = delta.seconds - minutes * 60
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+class TetrisGame(Page):
     GRASS = pygame.transform.scale(load_image("grass.png"), (WIDTH, HEIGHT))
 
     def __init__(self, player: PlayerSprite, level, ui_manager: pygame_gui.UIManager):
+
         self.player = player
         self.ui_manager = ui_manager
-        self.hello_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect((350, 275), (100, 50)),
-                                                         text='Say Hello',
-                                                         manager=ui_manager)
+
+        self.start = datetime.datetime.now()
 
         self.sprite_manager = GameBoard()
         self.sprite_manager.all_sprites.add(player)
@@ -325,6 +396,7 @@ class TetrisGame:
 
         self.sprite_manager.add_solid(Border(1, 1, 1, HEIGHT - 1))
         self.sprite_manager.add_solid(Border(WIDTH - 1, 1, WIDTH - 1, HEIGHT - 1))
+        self.construct_ui()
 
         for i in range(len(level)):
             s = level[i]
@@ -338,16 +410,34 @@ class TetrisGame:
             player, self.sprite_manager
         )
 
-        def construct_ui():
-            pass
+    def construct_ui(self):
+
+        self.panel = pygame_gui.elements.UIPanel(
+            relative_rect=pygame.Rect((0, HEIGHT - 50), (WIDTH, HEIGHT)),
+            starting_layer_height=0,
+            manager=self.ui_manager
+
+        )
+        self.time = pygame_gui.elements.UITextBox(
+            relative_rect=pygame.Rect((WIDTH - 130, HEIGHT - 50), (WIDTH - 100, HEIGHT - 40)),
+            html_text="Время: 00:00",
+            layer_starting_height=1,
+            manager=self.ui_manager,
+            parent_element=self.panel
+        )
 
     def update(self):
         self.movement_control.handle()
         self.sprite_manager.update()
+        current = datetime.datetime.now()
+
+        delta = current - self.start
+
+        self.time.html_text = f"Время: {format_timedelta(delta)}"
+        self.time.rebuild()
 
     def draw(self, screen):
         screen.blit(TetrisGame.GRASS, (0, 0))
-
         self.sprite_manager.draw(screen)
 
     def handle_event(self, event):
@@ -359,6 +449,8 @@ def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     manager = pygame_gui.UIManager((WIDTH, HEIGHT))
+    pygame.display.set_icon(PlayerSprite.IMAGE)
+    pygame.display.set_caption('Tetris 2 - Строй коммунизм не выходя из дома!')
 
     clock = pygame.time.Clock()
     player = PlayerSprite("player")
@@ -369,6 +461,8 @@ def main():
                                "BB        BB",
                                "B  B      BB",
                                "B  B  B BB  "], manager)
+    # page = Levels(manager, [Level("Уровень 1", "Осознание происходящего", []), Level("Уровень 2", "", []), Level("Уровень 3", "fff", [])])
+    #page = MainPage(manager)
     while running:
         time_delta = clock.tick(60) / 1000.0
         for event in pygame.event.get():
