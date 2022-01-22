@@ -6,6 +6,7 @@ import os
 import sys
 
 import pygame
+import pygame_gui
 from pygame.sprite import Sprite, AbstractGroup
 
 from event import Signal
@@ -69,14 +70,48 @@ class ButtonSprite(Sprite):
         self.pressed.emit()
 
 
-class BoxSprite(pygame.sprite.Sprite):
-    IMAGE = load_image("box.png")
+class CellSprite(pygame.sprite.Sprite):
+
+    def __init__(self, *groups: AbstractGroup):
+        super().__init__(*groups)
+
+
+class BrickSprite(pygame.sprite.Sprite):
+    IMAGE = load_image("bricks.png")
 
     def __init__(self, pos, *groups):
         super().__init__(*groups)
-        self.image = BoxSprite.IMAGE
+        self.image = BrickSprite.IMAGE
+        self.rect = self.image.get_rect()
+        self.mask = pygame.mask.from_surface(self.image)
+        self.rect.x, self.rect.y = pos
+
+
+class Figure(pygame.sprite.Sprite):
+    IMAGE = load_image("box.png")
+
+    def __init__(self, pattern, pos, *groups: AbstractGroup):
+        super().__init__(*groups)
+        self.image = pygame.Surface((BOX_SIZE * len(pattern[0]), BOX_SIZE * len(pattern)), pygame.SRCALPHA, 32)
+        self.image = self.image.convert_alpha()
         self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = pos
+        for i in range(len(pattern)):
+            s = pattern[i]
+            y = i * BOX_SIZE
+            for j in range(len(s)):
+                c = s[j]
+                x = j * BOX_SIZE
+                if c == 'B':
+                    self.image.blit(Figure.IMAGE, (x, y))
+        self.mask = pygame.mask.from_surface(self.image)
+
+    def rotate(self, degrees):
+        x, y = self.rect.x, self.rect.y
+        self.image = pygame.transform.rotate(self.image, degrees)
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = x, y
+        self.mask = pygame.mask.from_surface(self.image)
 
 
 class MainPage(Page):
@@ -144,13 +179,40 @@ class PlayerSprite(Sprite):
         self.rect = rect
 
 
+class GameBoard:
+
+    def __init__(self):
+        self.all_sprites = pygame.sprite.Group()
+        self.solid_sprites = pygame.sprite.Group()
+        self.boxes = pygame.sprite.Group()
+
+    def add_solid(self, sprite):
+        self.all_sprites.add(sprite)
+        self.solid_sprites.add(sprite)
+
+    def add_box(self, box):
+        self.add_solid(box)
+        self.boxes.add(box)
+
+    def collides_box(self, sprite):
+        return pygame.sprite.spritecollideany(sprite, self.boxes)
+
+    def update(self, *args, **kwargs):
+        self.all_sprites.update(*args, **kwargs)
+
+    def draw(self, screen):
+        self.all_sprites.draw(screen)
+
+    def collides_solid(self, sprite):
+        for solid in self.solid_sprites:
+            if pygame.sprite.collide_mask(sprite, solid):
+                return True
+        return False
+
+
 class MovementController:
-    def __init__(self, player: PlayerSprite, all_sprites, horizontal_borders, vertical_borders,
-                 boxes: pygame.sprite.Group, step=10):
-        self.vertical_borders = vertical_borders
-        self.horizontal_borders = horizontal_borders
-        self.all_sprites = all_sprites
-        self.boxes = boxes
+    def __init__(self, player: PlayerSprite, sprite_manager: GameBoard, step=10):
+        self.sprite_manager = sprite_manager
         self.jumpCount = 0
         self.isJump = False
 
@@ -188,61 +250,105 @@ class MovementController:
         '''
         new_rect = rect.move(move_x, move_y)
         self.player.set_rect(new_rect)
-        if pygame.sprite.spritecollideany(self.player, self.boxes) or \
-                pygame.sprite.spritecollideany(self.player, self.horizontal_borders):
+        if self.sprite_manager.collides_solid(self.player):
             self.player.set_rect(rect)
-        modifier = 1
-        if move_x < 0:
-            modifier = -1
+
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        offset_x, offset_y = 0, 0
+
+        if mouse_x > rect.x:
+            offset_x += BOX_SIZE
+        elif mouse_x < rect.x:
+            offset_x -= BOX_SIZE
+
+        if mouse_y > rect.y:
+            offset_y += BOX_SIZE
+        elif mouse_y < rect.y:
+            offset_y -= BOX_SIZE
 
         if pressed[pygame.K_END]:
-            box = BoxSprite((self.player.rect.x + (BOX_SIZE * modifier),
-                             self.player.rect.y - PlayerSprite.IMAGE.get_rect().height // 2))
-            if not pygame.sprite.spritecollideany(box, self.boxes):
-                self.boxes.add(box)
-                self.all_sprites.add(box)
+            x, y = pygame.mouse.get_pos()
+            box = Figure(["B"], self.getboxpos(x, y))
+            box.rotate(90)
+            if not self.sprite_manager.collides_solid(box):
+                self.sprite_manager.add_solid(box)
+
+    def getboxpos(self, x, y):
+        x_center = self.player.rect.x + self.player.image.get_width() // 2
+        y_center = self.player.rect.y + self.player.image.get_height() // 2
+        number_col = x_center // BOX_SIZE
+        number_row = y_center // BOX_SIZE
+        if x > self.player.rect.x and y > self.player.rect.y:
+            if x > y:
+                x_box, y_box = number_col * 50 + 50, number_row * 50
+                return x_box, y_box
+            else:
+                x_box, y_box = number_col * 50, number_row * 50 + 50
+                return x_box, y_box
+        elif x > self.player.rect.x and y < self.player.rect.y:
+            if x > y:
+                x_box, y_box = number_col * 50 + 50, number_row * 50
+                return x_box, y_box
+            else:
+                x_box, y_box = number_col * 50, number_row * 50 - 50
+                return x_box, y_box
+        elif x < self.player.rect.x and y > self.player.rect.y:
+            if x > y:
+                x_box, y_box = number_col * 50 - 50, number_row * 50
+                return x_box, y_box
+            else:
+                x_box, y_box = number_col * 50, number_row * 50 + 50
+                return x_box, y_box
+        elif x < self.player.rect.x and y < self.player.rect.y:
+            if x > y:
+                x_box, y_box = number_col * 50 - 50, number_row * 50
+                return x_box, y_box
+            else:
+                x_box, y_box = number_col * 50, number_row * 50 - 50
+                return x_box, y_box
 
 
 class TetrisGame:
+    GRASS = pygame.transform.scale(load_image("grass.png"), (WIDTH, HEIGHT))
 
-    def __init__(self, player, level):
-        self.all_sprites = pygame.sprite.Group()
-        self.boxes = pygame.sprite.Group()
+    def __init__(self, player: PlayerSprite, level, ui_manager: pygame_gui.UIManager):
         self.player = player
-        vertical_borders = pygame.sprite.Group()
-        vertical_borders.add(Border(5, 5, WIDTH - 5, 5, self.all_sprites),
-                             Border(5, HEIGHT - 5, WIDTH - 5, HEIGHT - 5, self.all_sprites))
-        horizontal_borders = pygame.sprite.Group()
-        horizontal_borders.add(Border(5, 5, 5, HEIGHT - 5, self.all_sprites),
-                               Border(WIDTH - 5, 5, WIDTH - 5, HEIGHT - 5, self.all_sprites))
+        self.ui_manager = ui_manager
+        self.hello_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect((350, 275), (100, 50)),
+                                                         text='Say Hello',
+                                                         manager=ui_manager)
+
+        self.sprite_manager = GameBoard()
+        self.sprite_manager.all_sprites.add(player)
+        self.sprite_manager.add_solid(Border(1, 1, WIDTH, 1))
+        self.sprite_manager.add_solid(Border(1, HEIGHT - 1, WIDTH - 1, HEIGHT - 1))
+
+        self.sprite_manager.add_solid(Border(1, 1, 1, HEIGHT - 1))
+        self.sprite_manager.add_solid(Border(WIDTH - 1, 1, WIDTH - 1, HEIGHT - 1))
+
         for i in range(len(level)):
             s = level[i]
             y = i * BOX_SIZE
             for j in range(len(s)):
                 c = s[j]
                 x = j * BOX_SIZE
-                pos = (x, y)
                 if c == 'B':
-                    sprite = BoxSprite(pos)
-                    self.boxes.add(sprite)
-                    self.all_sprites.add(sprite)
+                    self.sprite_manager.add_box(BrickSprite((x, y)))
         self.movement_control = MovementController(
-            player, self.all_sprites,
-            vertical_borders,
-            horizontal_borders,
-            self.boxes)
+            player, self.sprite_manager
+        )
 
-        if self.player is None:
-            raise ValueError("No player on level")
-        self.all_sprites.add(player)
+        def construct_ui():
+            pass
 
     def update(self):
         self.movement_control.handle()
-        self.all_sprites.update()
+        self.sprite_manager.update()
 
     def draw(self, screen):
-        screen.fill(BLUE_SKY)
-        self.all_sprites.draw(screen)
+        screen.blit(TetrisGame.GRASS, (0, 0))
+
+        self.sprite_manager.draw(screen)
 
     def handle_event(self, event):
         pass
@@ -252,23 +358,27 @@ def main():
     running = True
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    manager = pygame_gui.UIManager((WIDTH, HEIGHT))
 
     clock = pygame.time.Clock()
     player = PlayerSprite("player")
-    page = TetrisGame(player, ["BBB      BBB",
-                               "BB        BB",
+    page = TetrisGame(player, ["            ",
+                               "            ",
                                "B        BBB",
                                "BB  B      B",
                                "BB        BB",
                                "B  B      BB",
-                               "B  B  B BB  "])
+                               "B  B  B BB  "], manager)
     while running:
+        time_delta = clock.tick(60) / 1000.0
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             page.handle_event(event)
+        manager.update(time_delta)
         page.update()
         page.draw(screen)
+        manager.draw_ui(screen)
         pygame.display.flip()
         clock.tick(30)
 
