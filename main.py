@@ -443,7 +443,7 @@ class TetrisGame(Page):
         )
 
         self.figures = pygame_gui.elements.UISelectionList(
-            relative_rect=pygame.Rect((WIDTH - 200, HEIGHT - 50), (60, 50)),
+            relative_rect=pygame.Rect((WIDTH - 200, HEIGHT - 90), (60, 100)),
             item_list=list(TetrisGame.FIGURES.keys()),
             starting_height=1,
             manager=self.ui_manager
