@@ -4,7 +4,8 @@ import pygame
 import pygame_gui
 from pygame.sprite import AbstractGroup, Sprite
 
-from main import load_image, BOX_SIZE, HEIGHT, WIDTH, Page
+from page import Page
+from util import load_image, HEIGHT, WIDTH, BOX_SIZE
 
 FIRST_FIGURE = ["B  ",
                 "BBB"]
@@ -307,20 +308,20 @@ class TetrisGame(Page):
 
     def construct_ui(self):
 
-        panel = pygame_gui.elements.UIPanel(
+        self.panel = pygame_gui.elements.UIPanel(
             relative_rect=pygame.Rect((0, HEIGHT - 50), (WIDTH, HEIGHT)),
             starting_layer_height=0,
             manager=self.ui_manager
 
         )
-        time = pygame_gui.elements.UITextBox(
+        self.time = pygame_gui.elements.UITextBox(
             relative_rect=pygame.Rect((WIDTH - 130, HEIGHT - 50), (WIDTH - 100, HEIGHT - 40)),
             html_text="Время: 00:00",
             layer_starting_height=1,
             manager=self.ui_manager
         )
 
-        figures = pygame_gui.elements.UISelectionList(
+        self.figures = pygame_gui.elements.UISelectionList(
             relative_rect=pygame.Rect((WIDTH - 200, HEIGHT - 90), (60, 100)),
             item_list=list(TetrisGame.FIGURES.keys()),
             starting_height=1,
