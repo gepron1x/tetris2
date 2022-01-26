@@ -1,3 +1,6 @@
+import sqlite3
+
+
 class Score:
     def __init__(self, date, level, time, figures_placed):
         self.date = date
@@ -18,8 +21,12 @@ class Score:
         return self.figures_placed
 
 
+def _construct(rs: tuple):
+    return Score(*rs[1::])
+
+
 class ScoreDatabase:
-    def __init__(self, connection):
+    def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
 
     def initialize(self):
@@ -46,13 +53,11 @@ class ScoreDatabase:
 
     def load(self, score_id):
         cursor = self.connection.cursor()
-        return self._construct(cursor.execute("SELECT * FROM scores WHERE id=?", (score_id,)).fetchone())
+        return _construct(cursor.execute("SELECT * FROM scores WHERE id=?", (score_id,)).fetchone())
 
     def load_all(self):
-        pass
-
-    def _construct(self, rs: tuple):
-        return Score(*rs[1::])
+        cursor = self.connection.cursor()
+        return list(map(_construct, cursor.execute("SELECT * FROM scores").fetchall()))
 
 
 
