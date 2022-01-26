@@ -2,9 +2,12 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import sqlite3
+
 import pygame
 import pygame_gui
 
+from database import ScoreDatabase
 from event import Signal
 from game import PlayerSprite, TetrisGame, Level
 from page import Page
@@ -42,6 +45,31 @@ class MainPage(Page):
         elif element == self.levels_button:
             print("yes")
             self.levels.emit()
+
+
+class Statistics(Page):
+
+    def __init__(self, ui_manager: pygame_gui.UIManager, database: ScoreDatabase):
+        panel_width = 300
+        panel_height = 50
+
+        x = panel_width // 2
+        for index, statistic in enumerate(database.load_all()):
+            y = 200 + (panel_height + 20) * index
+            panel = pygame_gui.elements.UIPanel(
+                relative_rect=pygame.Rect(
+                    (x, y), (panel_width, panel_height)
+                ),
+                starting_layer_height=0,
+                manager=ui_manager
+            )
+            text = pygame_gui.elements.UITextBox(
+                relative_rect=pygame.Rect((x + 5, y + 1), (500, 49)),
+                html_text=f"Уровень: {statistic.level}; Дата: {statistic.date}, Время: {statistic.time} секунд; "
+                          f"Блоков установлено: {statistic.figures_placed}",
+                layer_starting_height=1,
+                manager=ui_manager
+            )
 
 
 class Levels(Page):
@@ -87,11 +115,13 @@ class Levels(Page):
 
 class TetrisGameMain:
 
-    def __init__(self, player: PlayerSprite, ui_manager: pygame_gui.UIManager, levels):
+    def __init__(self, player: PlayerSprite, ui_manager: pygame_gui.UIManager, database: ScoreDatabase, levels):
         self.player = player
         self.ui_manager = ui_manager
+        self.database = database
         self.page = MainPage(ui_manager)
         self.page.levels.connect(self.set_levels_page)
+        self.page.statistics.connect(self.set_statistics_page)
         self.levels = levels
 
     def set_levels_page(self):
@@ -102,6 +132,10 @@ class TetrisGameMain:
     def set_game_page(self, level):
         self.ui_manager.clear_and_reset()
         self.page = TetrisGame(self.player, level.get_content(), self.ui_manager)
+
+    def set_statistics_page(self):
+        self.ui_manager.clear_and_reset()
+        self.page = Statistics(self.ui_manager, self.database)
 
 
 def main():
@@ -114,13 +148,15 @@ def main():
 
     clock = pygame.time.Clock()
     player = PlayerSprite("player")
-    game = TetrisGameMain(player, manager, [Level("Уровень 1", "", ["            ",
-                                                                    "            ",
-                                                                    "X        XXX",
-                                                                    "XX  X      X",
-                                                                    "XX        XX",
-                                                                    "X PX      XX",
-                                                                    "X  X  X XX  "])])
+    database = ScoreDatabase(sqlite3.connect("scores.db"))
+    database.initialize()
+    game = TetrisGameMain(player, manager, database, [Level("Уровень 1", "", ["            ",
+                                                                              "            ",
+                                                                              "X        XXX",
+                                                                              "XX  X      X",
+                                                                              "XX        XX",
+                                                                              "X PX      XX",
+                                                                              "X  X  X XX  "])])
     # page = Levels(manager, [Level("Уровень 1", "", []), Level("Уровень 2", "", []), Level("Уровень 3", "", [])])
     # page = MainPage(manager)
     while running:

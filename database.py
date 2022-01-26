@@ -36,7 +36,7 @@ class ScoreDatabase:
                        "date TIMESTAMP NOT NULL, "
                        "level VARCHAR(16) NOT NULL, "
                        "time INTEGER NOT NULL, "
-                       "figures_placed INTEGER NOT NULL"
+                       "figures_placed INTEGER NOT NULL, "
                        "PRIMARY KEY(id AUTOINCREMENT)"
                        ")")
         self.connection.commit()
@@ -58,9 +58,5 @@ class ScoreDatabase:
     def load_all(self):
         cursor = self.connection.cursor()
         return list(map(_construct, cursor.execute("SELECT * FROM scores").fetchall()))
-
-
-
-
 
 
