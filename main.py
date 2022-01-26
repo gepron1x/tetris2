@@ -2,20 +2,17 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-import os
-import sys
-
 import pygame
 import pygame_gui
 
 from event import Signal
 from game import PlayerSprite, TetrisGame, Level
 from page import Page
-from util import WIDTH, HEIGHT
+from util import load_image, WIDTH, HEIGHT
 
 
 class MainPage(Page):
-    BACKGROUND = pygame.Surface((WIDTH, HEIGHT))
+    BACKGROUND = load_image("artwork.png")
     LEVELS, STATISTICS = 0, 1
 
     def __init__(self, ui_manager):
@@ -119,11 +116,11 @@ def main():
     player = PlayerSprite("player")
     game = TetrisGameMain(player, manager, [Level("Уровень 1", "", ["            ",
                                                                     "            ",
-                                                                    "B        BBB",
-                                                                    "BB  B      B",
-                                                                    "BB        BB",
-                                                                    "B  B      BB",
-                                                                    "B  B  B BB  "])])
+                                                                    "X        XXX",
+                                                                    "XX  X      X",
+                                                                    "XX        XX",
+                                                                    "X PX      XX",
+                                                                    "X  X  X XX  "])])
     # page = Levels(manager, [Level("Уровень 1", "", []), Level("Уровень 2", "", []), Level("Уровень 3", "", [])])
     # page = MainPage(manager)
     while running:

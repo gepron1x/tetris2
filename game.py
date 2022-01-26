@@ -7,11 +7,13 @@ from pygame.sprite import AbstractGroup, Sprite
 from page import Page
 from util import load_image, HEIGHT, WIDTH, BOX_SIZE
 
+PANEL_HEIGHT = 50
+
 FIRST_FIGURE = ["B  ",
                 "BBB"]
 SECOND_FIGURE = ["  B",
                  "BBB"]
-THIRD_FIGURE = ["B",
+THIRD_FIGURE = ["B ",
                 "B ",
                 "BB"]
 FOURTH_FIGURE = ["BB",
@@ -109,7 +111,8 @@ class PlayerSprite(Sprite):
 
 class GameBoard:
 
-    def __init__(self):
+    def __init__(self, player: PlayerSprite):
+        self.player = player
         self.all_sprites = pygame.sprite.Group()
         self.solid_sprites = pygame.sprite.Group()
         self.boxes = pygame.sprite.Group()
@@ -119,17 +122,24 @@ class GameBoard:
         self.solid_sprites.add(sprite)
 
     def add_box(self, box):
-        self.add_solid(box)
+        self.all_sprites.add(box)
         self.boxes.add(box)
 
     def collides_box(self, sprite):
-        return pygame.sprite.spritecollideany(sprite, self.boxes)
+        if self.collides_solid(sprite):
+            return True
+        for box in self.boxes:
+            if pygame.sprite.collide_mask(sprite, box):
+                print("Yes! It collides")
+                return True
+        return False
 
     def update(self, *args, **kwargs):
         self.all_sprites.update(*args, **kwargs)
 
     def draw(self, screen):
         self.all_sprites.draw(screen)
+        screen.blit(self.player.image, self.player.rect)
 
     def collides_solid(self, sprite):
         for solid in self.solid_sprites:
@@ -140,6 +150,7 @@ class GameBoard:
 
 class MovementController:
     def __init__(self, player: PlayerSprite, sprite_manager: GameBoard, step=BOX_SIZE):
+        self.board_rect = pygame.Rect((0, 0), (WIDTH, HEIGHT - PANEL_HEIGHT))
         self.sprite_manager = sprite_manager
         self.figure = FIRST_FIGURE
         self.is_move = True
@@ -201,7 +212,7 @@ class MovementController:
         '''
         new_rect = rect.move(move_x, move_y)
         self.player.set_rect(new_rect)
-        if self.sprite_manager.collides_solid(self.player):
+        if self.sprite_manager.collides_solid(self.player) or not self.board_rect.colliderect(new_rect):
             self.player.set_rect(rect)
 
         mouse_x, mouse_y = pygame.mouse.get_pos()
@@ -217,11 +228,11 @@ class MovementController:
         elif mouse_y < rect.y:
             offset_y -= BOX_SIZE
 
-        if pressed[pygame.K_f]:
+        if pygame.mouse.get_pressed(3)[2]:
             x, y = pygame.mouse.get_pos()
             box = Figure(self.figure, self.getboxpos(x, y))
-            if not self.sprite_manager.collides_solid(box):
-                self.sprite_manager.add_solid(box)
+            if not self.sprite_manager.collides_box(box):
+                self.sprite_manager.add_box(box)
 
     def getboxpos(self, x, y):
         print(self.player.rect.x, self.player.rect.y, x, y)
@@ -234,38 +245,38 @@ class MovementController:
         if x > 0 and y > 0:
             if x > y:
                 print('right')
-                x_box, y_box = number_col * 50 + 50, number_row * 50
+                x_box, y_box = number_col * BOX_SIZE + BOX_SIZE, number_row * BOX_SIZE
                 return x_box, y_box
             else:
                 print('up')
-                x_box, y_box = number_col * 50, number_row * 50 - 50
+                x_box, y_box = number_col * BOX_SIZE, number_row * BOX_SIZE - BOX_SIZE
                 return x_box, y_box
         elif x > 0 > y:
             if x > abs(y):
                 print('right')
-                x_box, y_box = number_col * 50 + 50, number_row * 50
+                x_box, y_box = number_col * BOX_SIZE + BOX_SIZE, number_row * BOX_SIZE
                 return x_box, y_box
             else:
                 print('down')
-                x_box, y_box = number_col * 50, number_row * 50 + 50
+                x_box, y_box = number_col * BOX_SIZE, number_row * BOX_SIZE + BOX_SIZE
                 return x_box, y_box
         elif x < 0 < y:
             if abs(x) > y:
                 print(5)
-                x_box, y_box = number_col * 50 - 50, number_row * 50
+                x_box, y_box = number_col * BOX_SIZE - BOX_SIZE, number_row * BOX_SIZE
                 return x_box, y_box
             else:
                 print(6, 'up')
-                x_box, y_box = number_col * 50, number_row * 50 - 50
+                x_box, y_box = number_col * BOX_SIZE, number_row * BOX_SIZE - BOX_SIZE
                 return x_box, y_box
         elif x < 0 and y < 0:
             if x > y:
                 print('down')
-                x_box, y_box = number_col * 50, number_row * 50 + 50
+                x_box, y_box = number_col * BOX_SIZE, number_row * BOX_SIZE + BOX_SIZE
                 return x_box, y_box
             else:
                 print(8, 'left')
-                x_box, y_box = number_col * 50 - 50, number_row * 50
+                x_box, y_box = number_col * BOX_SIZE - BOX_SIZE, number_row * BOX_SIZE
                 return x_box, y_box
 
 
@@ -285,13 +296,14 @@ class TetrisGame(Page):
         self.ui_manager = ui_manager
         self.start = datetime.datetime.now()
 
-        self.sprite_manager = GameBoard()
+        self.sprite_manager = GameBoard(player)
         self.sprite_manager.all_sprites.add(player)
-        self.sprite_manager.add_solid(Border(1, 1, WIDTH, 1))
+        '''   self.sprite_manager.add_solid(Border(1, 1, WIDTH, 1))
         self.sprite_manager.add_solid(Border(1, HEIGHT - 1, WIDTH - 1, HEIGHT - 1))
 
         self.sprite_manager.add_solid(Border(1, 1, 1, HEIGHT - 1))
         self.sprite_manager.add_solid(Border(WIDTH - 1, 1, WIDTH - 1, HEIGHT - 1))
+        '''
         self.construct_ui()
 
         for i in range(len(level)):
@@ -300,8 +312,10 @@ class TetrisGame(Page):
             for j in range(len(s)):
                 c = s[j]
                 x = j * BOX_SIZE
-                if c == 'B':
-                    self.sprite_manager.add_box(BrickSprite((x, y)))
+                if c == 'X':
+                    self.sprite_manager.add_solid(BrickSprite((x, y)))
+                elif c == 'P':
+                    self.player.rect.x, self.player.rect.y = x, y
         self.movement_control = MovementController(
             player, self.sprite_manager
         )
@@ -309,7 +323,7 @@ class TetrisGame(Page):
     def construct_ui(self):
 
         self.panel = pygame_gui.elements.UIPanel(
-            relative_rect=pygame.Rect((0, HEIGHT - 50), (WIDTH, HEIGHT)),
+            relative_rect=pygame.Rect((0, HEIGHT - PANEL_HEIGHT), (WIDTH, HEIGHT)),
             starting_layer_height=0,
             manager=self.ui_manager
 
