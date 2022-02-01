@@ -2,6 +2,7 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import os
 import sqlite3
 
 import pygame
@@ -39,42 +40,46 @@ class MainPage(Page):
         screen.blit(MainPage.BACKGROUND, (0, 0))
 
     def click(self, element):
-        print("yes")
         if element == self.statistics_button:
             self.statistics.emit()
         elif element == self.levels_button:
-            print("yes")
             self.levels.emit()
 
 
 class Statistics(Page):
 
-    def __init__(self, ui_manager: pygame_gui.UIManager, database: ScoreDatabase):
+    def __init__(self, ui_manager: pygame_gui.UIManager, scores):
+        self.exit = Signal()
+
         panel_width = 300
-        panel_height = 50
+        panel_height = 120
 
         x = panel_width // 2
-        for index, statistic in enumerate(database.load_all()):
+        for index, statistic in enumerate(scores):
             y = 200 + (panel_height + 20) * index
-            panel = pygame_gui.elements.UIPanel(
-                relative_rect=pygame.Rect(
-                    (x, y), (panel_width, panel_height)
-                ),
-                starting_layer_height=0,
-                manager=ui_manager
-            )
             text = pygame_gui.elements.UITextBox(
-                relative_rect=pygame.Rect((x + 5, y + 1), (500, 49)),
-                html_text=f"Уровень: {statistic.level}; Дата: {statistic.date}, Время: {statistic.time} секунд; "
+                relative_rect=pygame.Rect((x + 5, y + 1), (panel_width, panel_height)),
+                html_text=f"Уровень: {statistic.level}<br>"
+                          f"Дата: {statistic.date}<br>"
+                          f"Время: {statistic.time} секунд<br>"
                           f"Блоков установлено: {statistic.figures_placed}",
                 layer_starting_height=1,
                 manager=ui_manager
             )
 
+    def draw(self, screen):
+        screen.blit(MainPage.BACKGROUND, (0, 0))
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.exit.emit()
+
 
 class Levels(Page):
 
     def __init__(self, ui_manager: pygame_gui.UIManager, levels):
+        self.exit = Signal()
         self.level_chosen = Signal()
         self.button_to_level = dict()
         panel_width = 300
@@ -108,6 +113,9 @@ class Levels(Page):
             element = event.ui_element
             level = self.button_to_level[element]
             self.level_chosen.emit(level)
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                self.exit.emit()
 
     def draw(self, screen):
         screen.blit(MainPage.BACKGROUND, (0, 0))
@@ -119,23 +127,46 @@ class TetrisGameMain:
         self.player = player
         self.ui_manager = ui_manager
         self.database = database
-        self.page = MainPage(ui_manager)
+        self.page = None
+        self.set_main_page()
+
+        self.levels = levels
+
+    def set_main_page(self):
+        self.ui_manager.clear_and_reset()
+        self.page = MainPage(self.ui_manager)
         self.page.levels.connect(self.set_levels_page)
         self.page.statistics.connect(self.set_statistics_page)
-        self.levels = levels
 
     def set_levels_page(self):
         self.ui_manager.clear_and_reset()
         self.page = Levels(self.ui_manager, self.levels)
         self.page.level_chosen.connect(self.set_game_page)
+        self.page.exit.connect(self.set_main_page)
 
     def set_game_page(self, level):
         self.ui_manager.clear_and_reset()
-        self.page = TetrisGame(self.player, level.get_content(), self.ui_manager)
+        self.page = TetrisGame(self.player, level, self.ui_manager, self.database)
+        self.page.game_exit.connect(self.set_main_page)
+        self.page.game_win.connect(self.set_main_page)
 
     def set_statistics_page(self):
         self.ui_manager.clear_and_reset()
-        self.page = Statistics(self.ui_manager, self.database)
+        self.page = Statistics(self.ui_manager, self.database.load_all())
+        self.page.exit.connect(self.set_main_page)
+
+
+def load_levels():
+    full_directory = os.path.join("data", "levels")
+    levels = list()
+    for filename in os.listdir(full_directory):
+        filepath = os.path.join(full_directory, filename)
+        if not os.path.isfile(filepath):
+            continue
+        with open(filepath, mode="rt", encoding="utf-8") as f:
+            level = Level(os.path.splitext(filename)[0], "", f.readlines())
+            levels.append(level)
+    return levels
 
 
 def main():
@@ -150,13 +181,7 @@ def main():
     player = PlayerSprite("player")
     database = ScoreDatabase(sqlite3.connect("scores.db"))
     database.initialize()
-    game = TetrisGameMain(player, manager, database, [Level("Уровень 1", "", ["            ",
-                                                                              "            ",
-                                                                              "X        XXX",
-                                                                              "XX  X      X",
-                                                                              "XX        XX",
-                                                                              "X PX      XX",
-                                                                              "X  X  X XX  "])])
+    game = TetrisGameMain(player, manager, database, load_levels())
     # page = Levels(manager, [Level("Уровень 1", "", []), Level("Уровень 2", "", []), Level("Уровень 3", "", [])])
     # page = MainPage(manager)
     while running:
@@ -172,6 +197,7 @@ def main():
         game.ui_manager.draw_ui(screen)
         pygame.display.flip()
         clock.tick(30)
+    database.close()
 
 
 # Press the green button in the gutter to run the script.
