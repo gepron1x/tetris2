@@ -1,0 +1,19 @@
+Пронюк Георгий
+Дизайн игры и интерфейса,
+page.py
+game.py (TetrisGame, GameBoard)
+event.py
+main.py (Statistics, Levels, TetrisGameMain)
+
+Мусаев Георгий
+level_creation.py
+util.py
+game.py(MovementController, Level, BrickSprite, Figure, Border, PlayerSprite)
+main.py (load_levels)
+
+Смирнов Степан
+Пояснительная записка и частично презентация
+database.py
+
+
+
